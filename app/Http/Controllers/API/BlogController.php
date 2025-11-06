@@ -33,32 +33,37 @@ class BlogController extends Controller
             'blog'=>$blog
         ],201);
     }
-    public function index(Request $request){
-        $query = Blog::withCount('likes')->with('likes');
 
-        if($request->filter=='most_liked'){
-            $query->orderByDesc('likes_count');
-        } else {
-            $query->latest();
-        }
+public function index(Request $request)
+{
+    $query = Blog::withCount('likes')
+        ->withExists(['likes as liked_by_user' => function ($q) {
+            $q->where('user_id', Auth::id());
+        }]);
 
-        if($request->search){
-            $query->where('title','like','%'.$request->search.'%')
-                  ->orWhere('description','like','%'.$request->search.'%');
-        }
-
-        $blogs = $query->paginate(10);
-
-        $blogs->getCollection()->transform(function($blog){
-            $blog->liked_by_user = $blog->likes->contains('user_id', Auth::id());
-            return $blog;
-        });
-
-        return response()->json([
-            'status'=>'success',
-            'blogs'=>$blogs
-        ]);
+    // 🔽 Filter
+    if ($request->filter == 'most_liked') {
+        $query->orderByDesc('likes_count');
+    } else {
+        $query->latest();
     }
+
+    // 🔍 Search
+    if ($request->search) {
+        $query->where(function ($q) use ($request) {
+            $q->where('title', 'like', '%' . $request->search . '%')
+              ->orWhere('description', 'like', '%' . $request->search . '%');
+        });
+    }
+
+    // 📰 Paginate
+    $blogs = $query->paginate(10);
+
+    return response()->json([
+        'status' => 'success',
+        'blogs'  => $blogs
+    ]);
+}
 
 public function update(Request $request, $id){
     $blog = Blog::find($id);
